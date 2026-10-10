@@ -66365,16 +66365,43 @@ local boot = (function()
     local reporter = GlobalTrove:Add(tbl17.ad().new())
     local state = GlobalTrove:Add(tbl17.ae().new("kiciarebuild/rivals"))
     local stateData = state:Load()
-    if stateData.AutoLoad and stateData.AutoLoadConfigName ~= nil then
-        local r = reporter:ReportResult(store:LoadFromFile(stateData.AutoLoadConfigName))
-        if not r.Ok then
-            local text = "Failed to auto-load the selected config"
-            if string.find(r.Error.Detail, "newer than current version", 1, true) ~= nil then
-                text = "Your selected config was saved by a newer version - update or pick another config"
+
+    -- Load the selected config defensively. A malformed/missing error detail must
+    -- not abort the rest of the bootstrap sequence.
+    local autoLoadName = type(stateData) == "table" and stateData.AutoLoadConfigName or nil
+    if type(stateData) == "table" and stateData.AutoLoad == true
+        and type(autoLoadName) == "string" and autoLoadName:match("%S") then
+        local loadOk, loadResult = pcall(function()
+            return store:LoadFromFile(autoLoadName)
+        end)
+
+        if not loadOk then
+            tbl17.aB().get():Notify("Failed to auto-load the selected config")
+            warn("[Kicia Rebuild] Config auto-load raised an error: " .. tostring(loadResult))
+        else
+            local reportOk, r = pcall(function()
+                return reporter:ReportResult(loadResult)
+            end)
+
+            if not reportOk then
+                tbl17.aB().get():Notify("Failed to auto-load the selected config")
+                warn("[Kicia Rebuild] Config auto-load result was invalid: " .. tostring(r))
+            elseif not r or r.Ok ~= true then
+                local detail = ""
+                if type(r) == "table" and type(r.Error) == "table" then
+                    detail = tostring(r.Error.Detail or r.Error.Operation or "")
+                elseif type(r) == "table" and r.Error ~= nil then
+                    detail = tostring(r.Error)
+                end
+
+                local message = "Failed to auto-load the selected config"
+                if string.find(detail, "newer than current version", 1, true) then
+                    message = "Your selected config was saved by a newer version - update or pick another config"
+                end
+                tbl17.aB().get():Notify(message)
+            elseif #tbl17.bc().takeDroppedPaths() > 0 then
+                tbl17.aB().get():Notify("Some saved settings could not be restored and were reset to defaults")
             end
-            tbl17.aB().get():Notify(text)
-        elseif #tbl17.bc().takeDroppedPaths() > 0 then
-            tbl17.aB().get():Notify("Some saved settings could not be restored and were reset to defaults")
         end
     end
 
